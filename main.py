@@ -8,24 +8,6 @@ firebase_admin.initialize_app(cred, {
     'storageBucket': 'foodhorn-9b4dc.appspot.com'
 })
 
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# Fuckin sort out users/posts/post_id not removing from array when deleting!!!!!!!!!!!!!!!!!
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-# TODODODODODODODOI DWAUIODHWAUIDHWAUIHDUIAWHDUIAWH
-
 app = Flask(__name__)
 
 @app.route('/verifyToken', methods=['POST'])
@@ -83,6 +65,33 @@ def add_post_to_user():
     except Exception as e:
         return jsonify({'error': str(e)}), 401
 
+def remove_post_from_user(uid, post_id):
+
+    try:
+        # Initialize Firestore
+        db = firestore.client()
+
+        # Reference to the user's document
+        user_ref = db.collection('users').document(uid)
+
+        # Run a transaction to ensure atomicity
+        @firestore.transactional
+        def update_user(transaction, user_ref, post_id):
+            snapshot = user_ref.get(transaction=transaction)
+            if snapshot.exists:
+                transaction.update(user_ref, {
+                    'posts': firestore.ArrayRemove([post_id])
+                })
+
+        # Start the transaction
+        transaction = db.transaction()
+        update_user(transaction, user_ref, post_id)
+
+        return jsonify({'message': 'Post removed from user successfully'}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 401
+
 @app.route('/deletePost', methods=['POST'])
 def delete_post():
     data = request.json
@@ -123,6 +132,9 @@ def delete_post():
                     thumbnail_path = thumbnail_path.replace('All%20Thumbnails/', 'All Thumbnails/')  # Correct directory name
                     thumbnail_blob = bucket.blob(thumbnail_path)
                     thumbnail_blob.delete()
+
+                # Remove the post_id from the user's document
+                remove_post_from_user(uid, post_id)
 
                 # Now delete the Firestore document
                 post.reference.delete()
