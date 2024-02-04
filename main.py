@@ -3,6 +3,7 @@ import firebase_admin
 from firebase_admin import credentials, auth, firestore, initialize_app, storage
 from urllib.parse import unquote
 from random_username.generate import generate_username
+import random
 
 cred = credentials.Certificate("firebase-key.json")
 firebase_admin.initialize_app(cred, {
@@ -10,6 +11,35 @@ firebase_admin.initialize_app(cred, {
 })
 
 app = Flask(__name__)
+
+@app.route('/fetchPosts', methods=['POST'])
+def fetch_videos():
+    data = request.json
+    id_token = data.get('idToken')
+
+    try:
+        # Placeholder for ID token verification
+        if id_token != 'H]6mI5xK7ep5*"TIKFj_':
+            return jsonify({'error': "Unauthorized access."}), 401
+
+        db = firestore.client()
+
+        # Order posts by 'created_at' descending, then limit to 3 (or more based on your needs)
+        posts_query = db.collection('posts').order_by('created_at', direction=firestore.Query.DESCENDING).limit(3)
+        posts_stream = posts_query.stream()
+
+        posts = [post.to_dict() for post in posts_stream]
+
+        # Shuffle the posts to randomize the order
+        random.shuffle(posts)
+
+        return jsonify({
+            'message': 'Posts fetched successfully',
+            'posts': posts
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 401
 
 @app.route('/verifyToken', methods=['POST'])
 def verify_token():
@@ -25,10 +55,45 @@ def verify_token():
     except Exception as e:
         return jsonify({'error': str(e)}), 401
 
+@app.route('/getUserDataFromID', methods=['POST'])
+def get_user_data_from_id():
+    data = request.json
+    id_token = data.get('idToken')
+    user_id = data.get('userId')
+
+    try:
+
+        # Verify the ID token and get the UID of the user
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token['uid']
+
+        # Initialize Firestore
+        db = firestore.client()
+
+        # Reference to the user's document
+        user_ref = db.collection('users').document(user_id)
+
+        # Get the user's document
+        doc = user_ref.get()
+
+        if doc.exists:
+            # If the document exists, return the user's data
+            return jsonify({
+                'message': 'User data fetched successfully',
+                'username': doc.to_dict()['username'],
+                'posts': get_users_posts(user_id)
+            }), 200
+        else:
+            return jsonify({'error': 'User not found'}), 404
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
 @app.route('/getUserData', methods=['POST'])
 def get_user_data():
     data = request.json
     id_token = data.get('idToken')
+    user_id = data.get('userId')
 
     try:
         # Verify the ID token and get the UID of the user
@@ -46,10 +111,11 @@ def get_user_data():
 
         if doc.exists:
             # If the document exists, return the user's data
-            return jsonify({
-                'message': 'User data created successfully',
-                'username': doc.to_dict()['username'],
-                'posts': get_users_posts(uid)
+            if user_id is None:
+                return jsonify({
+                    'message': 'User data fetched successfully',
+                    'username': doc.to_dict()['username'],
+                    'posts': get_users_posts(uid)
                 }), 200
         else:
             # If the document does not exist, create one and set defaults
